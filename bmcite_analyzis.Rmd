@@ -1,0 +1,497 @@
+---
+title: "Bmcite Analyzis"
+output: html_document
+date: '2022-08-04'
+author: "Leonard Herault"
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+```
+
+In this tutorial we will construct multiomic metacells for the CITE-seq dataset of Bone marrow mononuclear cells from [(Stuart*, Butler* et al, Cell 2019)](https://www.cell.com/cell/fulltext/S0092-8674(19)30559-8).
+This dataset consists of 30,672 cells with two assays, RNA (17009 genes) and antibody-derived tags (ADT) (25 proteins).
+First we will follow Seurat [tutorial](https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html) for multiomic analyzis.
+Then we will use homemade functions to use the SuperCell approach with Seurat in order to construc multiomic metacells.
+
+# Packages loading
+
+
+```{r loading,warning=FALSE}
+library(Seurat)
+library(SeuratData)
+library(cowplot)
+library(dplyr)
+library(future.apply)
+library(pbapply)
+library(igraph)
+library(ggplot2)
+library(SuperCellMultiomics)
+```   
+
+# Homemade functions
+
+```{r}
+#source("../R/SCimplify_for_Seurat.R")
+```
+
+# Install and load bmcite multiomic data 
+Data are installed and loaded thanks to `SeuratData` package.
+
+```{r warning=FALSE}
+InstallData("bmcite")
+bm <- LoadData(ds = "bmcite")
+
+head(bm@meta.data)
+```
+`"celltype.l2"`contains annotation at the finest level derived from the multimodal analyzis of the data in [(Hao*, Hao* et al, Cell 2021)](https://www.cell.com/cell/fulltext/S0092-8674(19)30559-8).
+
+
+# Classic Seurat Workflow to analyze RNA data
+
+```{r ,warning=FALSE}
+DefaultAssay(bm) <- 'RNA'
+bm <- NormalizeData(bm) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA()
+```
+
+# Seurat Workflow to analyze ADT data
+
+A centered log ratio transformation is used for the normalization.
+All ADT features (the 20 antibodies) are used.
+We name the pca reduction `"apca"`.
+
+```{r,warning=FALSE}
+DefaultAssay(bm) <- 'ADT'
+# we will use all ADT features for dimensional reduction
+# we set a dimensional reduction name to avoid overwriting the 
+VariableFeatures(bm) <- rownames(bm[["ADT"]])
+bm <- NormalizeData(bm, normalization.method = 'CLR', margin = 2) %>% 
+  ScaleData() %>% RunPCA(reduction.name = 'apca')
+
+```
+
+
+# Seurat multimodal analyzis
+
+We compute a weighted neighrest neighbors network with `FindMultiModalNeighbors` function from pca (RNA) and apca (ADT) reduction dimensions.
+
+```{r,warning=FALSE}
+bm <- FindMultiModalNeighbors(
+  bm, reduction.list = list("pca", "apca"), 
+  dims.list = list(1:30, 1:18), 
+  modality.weight.name = "RNA.weight",
+  return.intermediate = T
+)
+```
+
+Umap is computed from the weighted neighrest neighbor graph.
+```{r,warning=FALSE}
+bm <- RunUMAP(bm, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+bm <- FindClusters(bm, graph.name = "wsnn", algorithm = 3, resolution = 2, verbose = FALSE)
+
+p <- DimPlot(bm, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend()
+p111 <- DimPlot(bm, reduction = 'wnn.umap', group.by = 'celltype.l2', label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend()
+p + p111
+p111
+```
+```{r}
+bm$celltype <- bm$celltype.l2
+bm$celltype[startsWith(bm$celltype,"Prog_B")] <- "LMPP"
+# bm$celltype[startsWith(bm$celltype,"CD8 Effector")] <- "CD8 Effector"
+# bm$celltype[startsWith(bm$celltype,"CD8 Memory")] <- "CD8 Memory"
+bm$celltype[startsWith(bm$celltype,"CD8 ")] <- "CD8"
+bm$celltype[startsWith(bm$celltype,"CD4 ")] <- "CD4"
+bm$celltype[endsWith(bm$celltype," B")] <- "B"
+bm$celltype[endsWith(bm$celltype,"Mono")] <- "Mono"
+
+bm$celltype[startsWith(bm$celltype,"CD56 bright NK")] <- "NK"
+bm$celltype[startsWith(bm$celltype,"Prog_DC")] <- "GMP"
+bm$celltype[startsWith(bm$celltype,"Prog_Mk")] <- "MEP"
+bm$celltype[startsWith(bm$celltype,"Prog_RBC")] <- "MEP"
+
+
+```
+
+
+```{r}
+colorClusters <- c("#999999","#b6dbff","#009292","#ff6db6","#ffb6db",
+                   "#6db6ff","#ffff6d","#b66dff","#490092","#004949",
+                   "#920000","#924900","#db6d00","#24ff24","#006ddb")
+
+# library(RColorBrewer)
+# n <- 21
+# colrs <- brewer.pal.info[brewer.pal.info$colorblind == TRUE, ]
+# col_vec = unlist(mapply(brewer.pal, colrs$maxcolors, rownames(colrs)))
+# col_vec <- viridis::viridis(21)
+
+DimPlot(bm, reduction = 'wnn.umap', group.by = 'celltype', label.size = 2.5,cols = colorClusters) 
+
+```
+
+We can compare ADT level and RNA level for CD3 (T cells) and CD8A (CD8 T cells).
+The 2 modalities are weakly correlated because of high dropouts rates in the RNA data. 
+
+```{r,warning=FALSE}
+FeatureScatter(object = bm,feature1 = "adt_CD8a",
+               feature2 = "rna_CD8A", group.by = "celltype",
+               slot = "data",cols = colorClusters)
+
+FeatureScatter(object = bm,feature1 = "adt_CD3",
+               feature2 = "rna_CD3G", group.by = "celltype",
+               slot = "data",cols = colorClusters)
+```
+
+# Metacell analyzis
+
+
+
+# Metacell from ADT and RNA modalities
+
+Now we will use both pca (RNA) and apca (ADT) results to construct our multiomic metacell.
+When two assays and related reduction names and dimensions are passed to SCimplify_for_Seurat, a weighted nearest neighbor network is constructed for the sepcified k and walktrap algorithm is performed on it to define the metacells.
+
+```{r,warning=FALSE}
+
+
+seurat.mc.multi <- SCimplify_for_Seurat(
+  bm, assay = c('RNA','ADT'),
+  reduction = list("pca", "apca"), 
+  dims = list(1:30, 1:18), 
+  graph.name = "knn",kernel = T,
+  gamma = 50
+)
+
+DefaultAssay(seurat.mc.multi) <- 'RNA'
+seurat.mc.multi <- NormalizeData(seurat.mc.multi) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA()
+DefaultAssay(seurat.mc.multi) <- 'ADT'
+VariableFeatures(seurat.mc.multi) <- rownames(seurat.mc.multi[["ADT"]])
+seurat.mc.multi <- NormalizeData(seurat.mc.multi, normalization.method = 'CLR', margin = 2) %>% 
+  ScaleData() %>% RunPCA(reduction.name = 'apca')
+```
+
+We can check the results as before
+
+```{r,warning=FALSE}
+seurat.mc.multi
+VlnPlot(seurat.mc.multi,c("size","celltype.l2_purity"))
+```
+
+
+
+```{r,warning=FALSE}
+crPlots <- supercell_FeatureFeaturePlot_Seurat(seurat.mc = seurat.mc.multi,cluster = "celltype",color.use = colorClusters,
+                                               feature_x = c("CD34","CD8A"),
+                                               feature_y = c("CD34","CD8a"))
+
+crPlots[[1]]
+crPlots[[2]]
+```
+
+
+```{r fig.height=2.5, fig.width=3.5,warning=FALSE}
+seurat.mc.multi <- SCimplify_for_Seurat(
+  bm,seurat.mc =  seurat.mc.multi,
+  gamma = 100
+)
+
+umapMultiSC <- DimPlotSC(seurat = bm,
+                         seurat.mc = seurat.mc.multi,
+                         reduction = "wnn.umap",
+                         metacell.col = "celltype",sc.col =  "celltype",
+                         sc.color = "colorClusters",
+                         mc.color  = colorClusters)+theme_classic()
+umapMultiSC <- umapMultiSC +
+  theme(legend.position="bottom",legend.box="vertical") +
+  labs(fill="") + guides(color = F)
+
+umapMultiSC
+```
+
+
+```{r}
+seurat.mc.multi$purity <- seurat.mc.multi$celltype_purity
+purity <- VlnPlot(seurat.mc.multi,features = c("purity"),pt.size = 0.01) + NoLegend() + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+size <- VlnPlot(seurat.mc.multi,features = c("size"),pt.size = 0.01) + NoLegend() + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+puritySize <- cowplot::plot_grid(purity , size, nrow = 1)
+
+seurat.mc.multi$orig.ident <- "metacells"
+bm$orig.ident <- "single-cells"
+allData <- merge(seurat.mc.multi,bm)
+
+allData@meta.data[,"detected genes"] <- allData$nFeature_RNA
+nFeature_RNA <- VlnPlot(allData,group.by = "orig.ident",features = "detected genes",pt.size = 0) + NoLegend() +
+  theme(axis.title.x=element_blank()
+  )
+
+# saveRDS(crCiteSeq1,"crCiteSeqCD3G.rds")
+# saveRDS(crCiteSeq2,"crCiteSeqCD8a.rds")
+
+
+
+citeSeqPlot2 <- cowplot::plot_grid(puritySize,nFeature_RNA,
+                                   ncol = 1,byrow = T,rel_heights = c(0.4,0.6))
+
+citeSeqPlot2
+#saveRDS(crPLotCite,"crCiteSeq.rds")
+```
+
+```{r}
+citeSeqPlot <- cowplot::plot_grid(umapMultiSC,citeSeqPlot2,
+                                  ncol = 2,byrow = T,rel_widths = c(0.6,0.3))
+
+citeSeqPlot
+```
+
+
+```{r}
+saveRDS(citeSeqPlot,"bmcite_umapmc.rds")
+```
+
+```{r}
+crPLot <- function (seurat.mc, feature_x, feature_y, method = c("pearson", 
+                                                                "kendall", "spearman"), assays = c("RNA", "ADT"), cluster = "celltype.l2", 
+                    is.normalized = F, plot = T, color.use = NULL, use.size = T) 
+{
+  method <- match.arg(arg = method)
+  Seurat::DefaultAssay(seurat.mc) <- assays[1]
+  if (assays[1] == "RNA") {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "LogNormalize", 
+                                         margin = 1)
+    }
+  }
+  else {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "CLR", 
+                                         margin = 2)
+    }
+  }
+  fe1 <- Seurat::GetAssayData(seurat.mc, slot = "data", assay = assays[1])[feature_x, 
+  ]
+  feature_x <- paste0(tolower(assays[1]), "_", feature_x)
+  rownames(fe1) <- feature_x
+  Seurat::DefaultAssay(seurat.mc) <- assays[2]
+  if (assays[2] == "ADT") {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "LogNormalize", 
+                                         margin = 1)
+    }
+  }
+  else {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "CLR", 
+                                         margin = 2)
+    }
+  }
+  fe2 <- Seurat::GetAssayData(seurat.mc, slot = "data", assay = assays[2])[feature_y, 
+  ]
+  rownames(fe2) <- feature_y
+  fe <- rbind(fe1, fe2)
+  if (use.size) {
+    sizes <- as.numeric(seurat.mc$size)
+  }
+  else {
+    sizes <- rep(1, length(ncol(seurat.mc)))
+  }
+  res <- supercell_FeatureFeaturePlot(fe, feature_x = feature_x, 
+                                      feature_y = feature_y, method = method, supercell_size = sizes, 
+                                      cluster = seurat.mc[[cluster]][, 1], color.use = color.use, 
+                                      combine = F)
+  w.cor <- data.frame(features = names(res$w.cor), w.cor = as.numeric(res$w.cor))
+  if (plot) {
+    for (i in names(res$p)) {
+      plot(res$p[[i]])
+    }
+  }
+  return(list(w.cor,res))
+}
+```
+
+```{r}
+seurat.mc.multi.20 <- SCimplify_for_Seurat(
+  bm,seurat.mc =  seurat.mc.multi,
+  gamma = 20
+)
+
+DefaultAssay(seurat.mc.multi.20) <- "RNA"
+seurat.mc.multi.20 <- NormalizeData(seurat.mc.multi.20)
+
+DefaultAssay(seurat.mc.multi.20) <- "ADT"
+seurat.mc.multi.20 <- NormalizeData(seurat.mc.multi.20)
+
+res20 <- crPLot(seurat.mc = seurat.mc.multi.20,cluster = "celltype",color.use = colorClusters,
+                feature_x = c("CD34","CD8A"),
+                feature_y = c("CD34","CD8a"))
+
+crCiteSeq1_mc20 <- res20[[2]]$p$rna_CD34_CD34  + NoLegend()+ theme(text = element_text(size = 10))  
+crCiteSeq2_mc20 <- res20[[2]]$p$rna_CD8A_CD8a  + NoLegend()+ theme(text = element_text(size = 10))  
+```
+
+
+```{r}
+res_sc <- crPLot(seurat.mc = bm,cluster = "celltype",color.use = colorClusters,
+                 feature_x = c("CD34","CD8A"),
+                 feature_y = c("CD34","CD8a"),use.size = F)
+
+res <- crPLot(seurat.mc = seurat.mc.multi,cluster = "celltype",color.use = colorClusters,
+              feature_x = c("CD34","CD8A"),
+              feature_y = c("CD34","CD8a"))
+
+crCiteSeq1 <-  res_sc[[2]]$p$rna_CD34_CD34 + NoLegend()+ theme(text = element_text(size = 10))  
+
+# crCiteSeq1 <-  crCiteSeq1 + res[[2]]$p$rna_CD3G_CD3 + geom_point(data=res[[2]]$p$rna_CD3G_CD3[[1]],aes(x = x,y = 
+#                                                             y, size = size,
+#                                                            fill = identity),colour="black",pch=21) + scale_fill_manual(values = colorClusters) + NoLegend()
+
+crCiteSeq1 <-  crCiteSeq1 
+
+crCiteSeq1_mc <- res[[2]]$p$rna_CD34_CD34  + NoLegend()+ theme(text = element_text(size = 10))  
+
+
+crCiteSeq2 <-  res_sc[[2]]$p$rna_CD8A_CD8a + NoLegend()+ theme(text = element_text(size = 10))  
+
+# crCiteSeq2 <- crCiteSeq2 + res[[2]]$p$rna_CD8A_CD8a + geom_point(data=res[[2]]$p$rna_CD8A_CD8a[[1]],aes(x = x,y = 
+#                                                             y, size = size,
+#                                                            fill = identity),colour="black",pch=21) + scale_fill_manual(values = colorClusters) + NoLegend() 
+
+crCiteSeq2  
+
+crCiteSeq2_mc <- res[[2]]$p$rna_CD8A_CD8a  + NoLegend() + theme(text = element_text(size = 10))  
+
+#TODO::Add correlation at a gamma of 50
+
+```
+
+
+```{r}
+
+crPLotCite <- cowplot::plot_grid(crCiteSeq1,crCiteSeq1_mc20,crCiteSeq1_mc,
+                                 crCiteSeq2,crCiteSeq2_mc20,crCiteSeq2_mc,
+                                 ncol = 3,byrow = T)
+crPLotCite
+saveRDS(crPLotCite,"crCiteSeq.rds")
+```
+
+
+
+
+
+
+# Global analyzis of ADT RNA correlation
+
+Some ADT RNA feature couple are not/poorly correlated because of post transcriptionnal regulation or isoforms.
+
+```{r,warning=FALSE}
+feature_x <- c("CD3G","CD8A","ITGAL","ITGAX","IL3RA","IL7R","CD14","FCGR3A","KLRB1","CD19",
+               "CCR7","IL2RA","CD27","ICOS","CD34","CD38","CD4","PTPRC","PTPRC",
+               "NCAM1","B3GAT1","CD69",'CD79B',"HLA-DRA","CD28")
+
+
+feature_y <- c("CD3","CD8a","CD11a","CD11c","CD123","CD127-IL7Ra","CD14","CD16","CD161","CD19",
+               "CD197-CCR7","CD25","CD27","CD278-ICOS","CD34","CD38","CD4","CD45RA","CD45RO",
+               "CD56","CD57","CD69","CD79b","HLA.DR","CD28")
+seurat.mc.multi <- NormalizeData(seurat.mc.multi)
+# FeatureScatter(bm,feature1 = "rna_CD69",feature2 = "adt_CD69",group.by = 'celltype.l1')
+# FeatureScatter(seurat.mc.multi,feature1 = "rna_CD69",feature2 = "adt_CD69",group.by = 'celltype.l1')
+# FeatureScatter(bm,feature1 = "PTPRC",feature2 = "CD45RA",group.by = 'celltype.l1')
+# FeatureScatter(seurat.mc.multi,feature1 = "PTPRC",feature2 = "CD45RA",group.by = 'celltype.l1')
+# FeatureScatter(bm,feature1 = "PTPRC",feature2 = "CD45RO",group.by = 'celltype.l1')
+# FeatureScatter(seurat.mc.multi,feature1 = "PTPRC",feature2 = "CD45RO",group.by = 'celltype.l1')
+# FeatureScatter(bm,feature1 = "CCR7",feature2 = "CD197-CCR7",group.by = 'celltype.l1')
+# FeatureScatter(seurat.mc.multi,feature1 = "CCR7",feature2 = "CD197-CCR7",group.by = 'celltype.l1')
+# FeatureScatter(seurat.mc.multi,feature1 = "CD11a",feature2 = "rna_ITGAL",group.by = 'celltype.l1')
+# FeatureScatter(seurat.mc.multi,feature1 = "CD11a",feature2 = "rna_ITGAL",group.by = 'celltype.l1')
+
+allRes.sc <- crPLot(seurat.mc = bm,cluster = "celltype",color.use = colorClusters,
+       feature_x = feature_x,
+       feature_y = feature_y,
+       use.size = F)
+
+allRes.mc <- crPLot(seurat.mc = seurat.mc.multi,cluster = "celltype",color.use = colorClusters,
+       feature_x = feature_x,
+       feature_y = feature_y)
+
+
+```
+```{r}
+for (i in names(allRes.sc[[2]]$p)) {
+  print(i)
+  p1 <- allRes.sc[[2]]$p[[i]] + NoLegend()
+  p2 <- allRes.mc[[2]]$p[[i]]+ NoLegend()
+  p <- p1+p2
+  plot(p)
+}
+```
+
+We take all the others feature couples to perform a global analyzis
+
+```{r,warning=FALSE}
+# feature_x <- c("CD3G","CD8A","ITGAL","ITGAX","IL3RA","IL7R","CD14","FCGR3A","KLRB1","CD19",
+#                "CCR7","IL2RA","CD27","ICOS","CD34","CD38","CD4",
+#                "NCAM1","B3GAT1",'CD79B',"HLA-DRA")
+# 
+# 
+# feature_y <- c("CD3","CD8a","CD11a","CD11c","CD123","CD127-IL7Ra","CD14","CD16","CD161","CD19",
+#                "CD197-CCR7","CD25","CD27","CD278-ICOS","CD34","CD38","CD4",
+#                "CD56","CD57","CD79b","HLA.DR")
+```
+
+For gamma from 1 (single cells) to 200 we compare the weighted correlations of feature couples for metacell obtained from multiomic data or randomly.
+
+```{r,warning=FALSE}
+
+
+crData <- data.frame()
+for (gamma in c(1,10,20,50,100,200)) {
+  seurat.mc.multi <- SCimplify_for_Seurat(seurat = bm,seurat.mc.multi,gamma = gamma)
+  
+  
+  seurat.mc.multi.w.cor <- supercell_FeatureFeaturePlot_Seurat(seurat.mc = seurat.mc.multi,
+                                                               feature_x = feature_x,
+                                                               feature_y = feature_y,plot = F)
+  randomMC <- 1:floor(ncol(bm)/gamma)
+  randomMemberships <-sample(c(randomMC, sample(randomMC, ncol(bm)-length(randomMC), replace=TRUE)))
+  #randomMemberships <- sample(1:floor(ncol(bm)/gamma),size = ncol(bm),replace = T)
+  
+  seurat.mc.random <- SCimplify_for_Seurat(seurat = bm,membership=randomMemberships)
+  
+  seurat.mc.random.cor  <- supercell_FeatureFeaturePlot_Seurat(seurat.mc = seurat.mc.random,
+                                                               feature_x = feature_x,
+                                                               feature_y = feature_y,
+                                                               plot=F)
+  seurat.mc.multi.w.cor$input <- "multiome"
+  seurat.mc.multi.w.cor$gamma <- gamma
+  seurat.mc.random.cor$input <- "random"
+  seurat.mc.random.cor$gamma <- gamma
+  
+  crData <- rbind(crData,seurat.mc.multi.w.cor,seurat.mc.random.cor)
+  
+  # crData <- rbind(crData, data.frame(w.cor = c(seurat.mc.multi.w.cor$w.cor,seurat.mc.random.cor$w.cor),
+  #                                    input = c(rep("multi",length(seurat.mc.multi.w.cor)),
+  #                                              rep("random",length(seurat.mc.random.cor))),
+  #                                    gamma = c(rep(gamma,length(seurat.mc.multi.w.cor)),
+  #                                              rep(gamma,length(seurat.mc.random.cor)))))
+  
+}
+
+crData$gamma <- factor(as.character(crData$gamma),levels = c(1,c(1:10)*10,150,200))
+
+
+globalCr <- ggplot(crData,aes(y=w.cor,x = gamma,fill = input)) +geom_boxplot()
+```
+
+```{r}
+globalCr
+saveRDS(globalCr,"globalCrCiteSeq.rds")
+```
+
+Using metacell simplification clearly improves the correlations between measured RNA and protein levels.
+

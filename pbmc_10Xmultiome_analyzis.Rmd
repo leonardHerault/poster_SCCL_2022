@@ -1,0 +1,662 @@
+---
+title: "PBMC_multiome"
+author: "Leonard Herault"
+date: '2022-08-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,results = FALSE)
+```
+
+
+## Loading packages for scNRA seq analyzis with Seurat and SuperCell
+```{r}
+library(SuperCellMultiomics)
+library("igraph")
+library("RANN")
+library("WeightedCluster")
+library("corpcor")
+library("weights")
+library("Hmisc")
+library("Matrix")
+library("patchwork")
+library("plyr")
+library("irlba")
+library(SeuratWrappers)
+library(SingleCellExperiment)
+library(Seurat)
+library(Matrix)
+library(destiny)
+library(gridExtra)
+library(SeuratDisk)
+
+```
+
+```{r}
+library(SeuratData)
+library(chromVAR)
+library(JASPAR2020)
+library(TFBSTools)
+library(motifmatchr)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Signac)
+library(EnsDb.Hsapiens.v86)
+```
+
+
+
+
+## Loading 
+
+We use the original preprocessing for cell filtering.
+We define coarse annotations by merging the different CD8 (resp. CD4) memory types.
+```{r}
+pbmc <- readRDS("~/work/SuperCellMultiomicsAnalyses/output/correlationAnalyzis/pbmcMultiome/singlecells_analysis/seurat.multiome.mc.activity.rds")
+pbmc$coarse.annotation <- pbmc$seurat_annotations
+
+pbmc$coarse.annotation[grepl(pattern = "CD8 TEM",x = pbmc$coarse.annotation)] <- "CD8 Mem"
+
+pbmc$coarse.annotation[grepl(pattern = "CD4 TEM",x = pbmc$coarse.annotation)] <- "CD4 Mem"
+pbmc$coarse.annotation[grepl(pattern = "CD4 TCM",x = pbmc$coarse.annotation)] <- "CD4 Mem"
+
+pbmc$coarse.annotation[grepl(pattern = "CD8 TEM",x = pbmc$coarse.annotation)] <- "CD8 Mem"
+
+pbmc$coarse.annotation[grepl(pattern = "Intermediate B",x = pbmc$coarse.annotation)] <- "B Interm"
+pbmc$coarse.annotation[grepl(pattern = "Naive B",x = pbmc$coarse.annotation)] <- "B Naive"
+pbmc$coarse.annotation[grepl(pattern = "Memory B",x = pbmc$coarse.annotation)] <- "B Mem"
+
+
+```
+
+We define a color palette for this new annotations.
+```{r}
+color <- c("CD4 Naive"="#999999","NK"="#004949","CD8 Naive"="#009292","CD14 Mono"="#ff6db6",
+           "gdT"="#490092", "CD4 Mem"="#006ddb","cDC"="#b66dff","Treg"="#6db6ff",
+           "B Interm"="#b6dbff","B Mem"= "#8494FF","B Naive" = "#00A9FF",
+           "CD16 Mono"="#920000","HSPC"="#924900","CD8 Mem"="#db6d00","pDC"="#24ff24", "MAIT"="#ffff6d","Plasma"="#ffb6db")
+```
+
+## Analyzis of each modality separately
+
+# Seurat scRNA-seq workflow
+
+As in Seurat tutorial for multimodal analyizis we use the SCTransform normalization for RNA data
+
+```{r}
+DefaultAssay(pbmc) <- "RNA"
+pbmc <- SCTransform(pbmc, verbose = FALSE) %>% RunPCA() 
+
+```
+
+# Signac scATAC-seq workflow
+
+```{r}
+# ATAC analysis
+# We exclude the first dimension as this is typically correlated with sequencing depth
+#grange.use <- seqnames(grange.counts) %in% standardChromosomes(grange.counts)
+DefaultAssay(pbmc) <- "ATAC"
+pbmc <- RunTFIDF(pbmc)
+pbmc <- FindTopFeatures(pbmc, min.cutoff = 'q0')
+pbmc <- RunSVD(pbmc)
+#pbmc <- RunUMAP(pbmc, reduction = 'lsi', dims = 2:50, reduction.name = "umap.atac", reduction.key = "atacUMAP_")
+```
+
+# UMAP results
+
+
+
+## Multimodal analyzis with Seurat
+
+```{r}
+pbmc <- FindMultiModalNeighbors(pbmc, reduction.list = list("pca", "lsi"), dims.list = list(1:50, 2:50))
+pbmc <- RunUMAP(pbmc, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+#pbmc <- FindClusters(pbmc, graph.name = "wsnn", algorithm = 3, verbose = FALSE)
+```
+Comparison of UMAP results 
+
+```{r fig.height = 3, fig.width= 9}
+p3 <- DimPlot(pbmc, reduction = "wnn.umap", group.by = "coarse.annotation", label = TRUE, label.size = 2.5, repel = TRUE,cols = color) +labs(fill = "")
+```
+
+```{r}
+p3
+```
+
+We can have a look at the original annotations
+
+```{r fig.height = 3, fig.width= 9}
+DimPlot(pbmc, reduction = "wnn.umap", group.by = "seurat_annotations", label = TRUE, label.size = 2.5, repel = TRUE) + ggtitle("WNN")
+```
+
+
+
+## Metacells analyzis
+
+Using `SCimplify_for_Seurat` function we will construct multiomic metacell from pca (RNA assay) or lsi (ATAC assay) or from pca and lsi combined from a weighted nearest network obtained with Seurat
+
+```{r}
+
+
+seurat.mc.multi <- readRDS("~/work/SuperCellMultiomicsAnalyses/output/correlationAnalyzis/pbmcMultiome/metacells/g100/seurat.multiome.mc.activity.rds")
+
+seurat.mc.multi$celltype <- supercell_assign(clusters = pbmc$coarse.annotation,supercell_membership = seurat.mc.multi@misc$membership,method = "absolute")
+seurat.mc.multi$purity <- supercell_purity(clusters = pbmc$coarse.annotation,supercell_membership = seurat.mc.multi@misc$membership)
+
+```
+
+We can check our metacell for size and purity regarding coarse annotations
+```{r fig.height = 3, fig.width= 6}
+
+VlnPlot(seurat.mc.multi,features = c("size","coarse.annotation_purity"))
+```
+```{r fig.height=2.5, fig.width=3.5,warning=FALSE}
+
+pbmc$celltype <- pbmc$coarse.annotation
+umapMultiSC <- DimPlotSC(seurat = pbmc,
+                         seurat.mc = seurat.mc.multi,
+                         reduction = "wnn.umap",
+                         metacell.col = "celltype",sc.col =  "celltype",
+                         sc.color = color,
+                         mc.color  = color)+theme_classic()
+umapMultiSC <- umapMultiSC +
+  theme(legend.position="bottom",legend.box="vertical") +
+  labs(fill="") + guides(color = F) + guides(fill=guide_legend(ncol=4))
+
+
+umapMultiSC
+```
+
+
+```{r}
+seurat.mc.multi$purity <- seurat.mc.multi$purity
+purity <- VlnPlot(seurat.mc.multi,features = c("purity"),pt.size = 0.01) + NoLegend() + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+size <- VlnPlot(seurat.mc.multi,features = c("size"),pt.size = 0.01) + NoLegend() + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+puritySize <- cowplot::plot_grid(purity , size, nrow = 1)
+
+seurat.mc.multi$orig.ident <- "metacells"
+pbmc$orig.ident <- "single-cells"
+allData <- merge(seurat.mc.multi,pbmc)
+
+allData@meta.data[,"detected peaks"] <- allData$nFeature_ATAC
+nFeature_RNA <- VlnPlot(allData,group.by = "orig.ident",features = "detected peaks",pt.size = 0) + NoLegend() +
+  theme(axis.title.x=element_blank()
+  )
+remove(allData)
+
+gc()
+# saveRDS(crCiteSeq1,"crCiteSeqCD3G.rds")
+# saveRDS(crCiteSeq2,"crCiteSeqCD8a.rds")
+
+
+
+citeSeqPlot2 <- cowplot::plot_grid(puritySize,nFeature_RNA,
+                                   ncol = 1,byrow = T,rel_heights = c(0.4,0.6))
+
+citeSeqPlot2
+#saveRDS(crPLotCite,"crCiteSeq.rds")
+```
+
+```{r}
+multiomePlot <- cowplot::plot_grid(umapMultiSC,citeSeqPlot2,
+                                   ncol = 2,byrow = T,rel_widths = c(0.6,0.3))
+
+multiomePlot
+```
+
+
+```{r}
+saveRDS(multiomePlot,"multiome_umapmc.rds")
+```
+
+
+
+
+```{r}
+crPLot <- function (seurat.mc, feature_x, feature_y, method = c("pearson", 
+                                                                "kendall", "spearman"), assays = c("ACTIVITY", "RNA"), cluster = "celltype.l2", 
+                    is.normalized = T, plot = T, color.use = NULL, use.size = T) 
+{
+  method <- match.arg(arg = method)
+  Seurat::DefaultAssay(seurat.mc) <- assays[1]
+  if (assays[1] == "RNA") {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "LogNormalize", 
+                                         margin = 1)
+    }
+  }
+  else {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "CLR", 
+                                         margin = 2)
+    }
+  }
+  fe1 <- Seurat::GetAssayData(seurat.mc, slot = "data", assay = assays[1])[feature_x, 
+  ]
+  feature_x <- paste0(tolower(assays[1]), "_", feature_x)
+  rownames(fe1) <- feature_x
+  Seurat::DefaultAssay(seurat.mc) <- assays[2]
+  if (assays[2] == "ADT") {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "LogNormalize", 
+                                         margin = 1)
+    }
+  }
+  else {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, normalization.method = "CLR", 
+                                         margin = 2)
+    }
+  }
+  fe2 <- Seurat::GetAssayData(seurat.mc, slot = "data", assay = assays[2])[feature_y, 
+  ]
+  rownames(fe2) <- feature_y
+  fe <- rbind(fe1, fe2)
+  if (use.size) {
+    sizes <- as.numeric(seurat.mc$size)
+  }
+  else {
+    sizes <- rep(1, length(ncol(seurat.mc)))
+  }
+  res <- supercell_FeatureFeaturePlot(fe, feature_x = feature_x, 
+                                      feature_y = feature_y, method = method, supercell_size = sizes, 
+                                      cluster = seurat.mc[[cluster]][, 1], color.use = color.use, 
+                                      combine = F)
+  w.cor <- data.frame(features = names(res$w.cor), w.cor = as.numeric(res$w.cor))
+  if (plot) {
+    for (i in names(res$p)) {
+      plot(res$p[[i]])
+    }
+  }
+  return(list(w.cor,res))
+}
+```
+
+
+
+
+```{r}
+res_sc <- crPLot(seurat.mc = pbmc,cluster = "celltype",color.use = color,
+                 feature_x = c("TCF7","SPI1"),
+                 feature_y = c("TCF7","SPI1"),use.size = F)
+
+res <- crPLot(seurat.mc = seurat.mc.multi,cluster = "celltype",color.use = color,
+              feature_x = c("TCF7","SPI1"),
+              feature_y = c("TCF7","SPI1"))
+
+crCiteSeq1 <-  res_sc[[2]]$p$activity_TCF7_TCF7 + NoLegend()+ theme(text = element_text(size = 10))  
+
+# crCiteSeq1 <-  crCiteSeq1 + res[[2]]$p$rna_CD3G_CD3 + geom_point(data=res[[2]]$p$rna_CD3G_CD3[[1]],aes(x = x,y = 
+#                                                             y, size = size,
+#                                                            fill = identity),colour="black",pch=21) + scale_fill_manual(values = colorClusters) + NoLegend()
+
+crCiteSeq1 <-  crCiteSeq1 
+
+crCiteSeq1_mc <- res[[2]]$p$activity_TCF7_TCF7  + NoLegend()+ theme(text = element_text(size = 10))  
+
+
+crCiteSeq2 <-  res_sc[[2]]$p$activity_SPI1_SPI1 + NoLegend()+ theme(text = element_text(size = 10))  
+
+# crCiteSeq2 <- crCiteSeq2 + res[[2]]$p$rna_CD8A_CD8a + geom_point(data=res[[2]]$p$rna_CD8A_CD8a[[1]],aes(x = x,y = 
+#                                                             y, size = size,
+#                                                            fill = identity),colour="black",pch=21) + scale_fill_manual(values = colorClusters) + NoLegend() 
+
+crCiteSeq2  
+
+crCiteSeq2_mc <- res[[2]]$p$activity_SPI1_SPI1  + NoLegend() + theme(text = element_text(size = 10))  
+
+#TODO::Add correlation at a gamma of 50
+
+```
+
+```{r}
+seurat.mc.multi.20 <- SCimplify_for_Seurat(
+  pbmc,seurat.mc =  seurat.mc.multi,
+  gamma = 20
+)
+
+DefaultAssay(seurat.mc.multi.20) <- "RNA"
+seurat.mc.multi.20 <- NormalizeData(seurat.mc.multi.20)
+
+DefaultAssay(seurat.mc.multi.20) <- "ACTIVITY"
+seurat.mc.multi.20 <- NormalizeData(seurat.mc.multi.20)
+
+
+res20 <- crPLot(seurat.mc = seurat.mc.multi.20,cluster = "celltype",color.use = color,
+                feature_x = c("TCF7","SPI1"),
+                feature_y = c("TCF7","SPI1"))
+
+crCiteSeq1_mc20 <- res20[[2]]$p$activity_TCF7_TCF7  + NoLegend()+ theme(text = element_text(size = 10))  
+crCiteSeq2_mc20 <- res20[[2]]$p$activity_SPI1_SPI1  + NoLegend()+ theme(text = element_text(size = 10))  
+```
+
+```{r}
+crPLotMultiome<- cowplot::plot_grid(crCiteSeq1,crCiteSeq1_mc20,crCiteSeq1_mc,
+                                    crCiteSeq2,crCiteSeq2_mc20,crCiteSeq2_mc,
+                                    ncol = 3,byrow = T)
+crPLotMultiome
+saveRDS(crPLotMultiome,"crPLotMultiome.rds")
+```
+
+```{r}
+supercell_FeatureFeatureCorr_single <- function(fe_x,
+                                                fe_y,
+                                                feature_x_name,
+                                                feature_y_name,
+                                                method = c("pearson", "kendall", "spearman"),
+                                                supercell_size = NULL,
+                                                clusters = NULL,
+                                                color.use = NULL,
+                                                x.max = NULL,
+                                                y.max = NULL,
+                                                pt.size = 1,
+                                                x.min = NULL,
+                                                y.min = NULL,
+                                                alpha = 0.9){
+  
+  
+  method <- match.arg(arg = method)
+  N.SC <- length(fe_x)
+  
+  plot.df <- data.frame(x = fe_x,
+                        y = fe_y,
+                        identity = factor(clusters),
+                        size = supercell_size)
+  
+  
+  membership <- rep(1:N.SC, plot.df$size)
+  
+  crt               <- stats::cor.test(plot.df$x[membership], plot.df$y[membership],method = method)
+  w.cor             <- unname(crt$estimate)
+  w.pval            <- unname(crt$p.value)
+
+  res <- list( w.cor = w.cor, w.pval = w.pval)
+  return(res)
+}
+
+supercell_FeatureFeatureCorr <- function(fe,
+                                         feature_x,
+                                         feature_y,
+                                         method = c("pearson", "kendall", "spearman"),
+                                         supercell_size = NULL,
+                                         clusters = NULL,
+                                         color.use = NULL,
+                                         idents = NULL,
+                                         pt.size = 1,
+                                         alpha = 0.9,
+                                         x.max = NULL,
+                                         y.max = NULL,
+                                         same.x.lims = FALSE,
+                                         same.y.lims = FALSE,
+                                         ncol = NULL,
+                                         combine = TRUE,
+                                         sort.by.corr = TRUE){
+  
+  method <- match.arg(arg = method)
+  N.SC <- ncol(fe) # number of super-cells
+  
+  if(is.null(clusters)) clusters <- 1
+  
+  if((length(clusters) != N.SC) & length(clusters) != 1){
+    stop(paste0("clusters has to be a vector of the same lenght as fe1 (", N.SC, ") or 1, not ", length(clusters)))
+  }
+  if(length(clusters) == 1){
+    clusters <- rep(clusters, N.SC)
+  }
+  
+  
+  if(is.null(supercell_size)) supercell_size <- rep(1, N.SC)
+  
+  if((length(supercell_size) != N.SC) & length(supercell_size) != 1){
+    stop(paste0("supercell_size has to be a vector of the same lenght as fe1 (", N.SC, ") or 1, not ", length(supercell_size)))
+  }
+  if(length(supercell_size) == 1){
+    supercell_size <- rep(supercell_size, N.SC)
+  }
+  
+  
+  if(is.null(idents)) idents <- sort(unique(clusters))
+  
+  ids.keep.idents <- which(clusters %in% idents)
+  
+  
+  if(!is.null(color.use)){
+    if(length(color.use) < length(idents)){
+      warning(paste0("Length of color.use (", length(color.use), ") is smaller than number of idents (",
+                     length(idents),"), color.use will not be used"))
+      color.use <- NULL
+    }
+  }
+  
+  
+  if(length(feature_x) != length(feature_y)){
+    if(length(feature_x) == 1){
+      feature_x <- rep(feature_x, length(feature_y))
+    } else {
+      if(length(feature_y) == 1){
+        feature_y <- rep(feature_y, length(feature_x))
+      } else{
+        stop("Vectors feature_x and feature_y need to have the same length or one of them has to be a vector of length 1")
+      }
+    }
+  }
+  
+  # keep features that are present in the feature expression dataset
+  features.set_x <- feature_x[feature_x %in% rownames(fe) & feature_y %in% rownames(fe)]
+  features.set_y <- feature_y[feature_x %in% rownames(fe) & feature_y %in% rownames(fe)]
+  
+  
+  if(same.y.lims & is.null(x = y.max)){
+    y.max <- max(fe[features.set_y, ids.keep.idents])
+  }
+  
+  if(same.x.lims & is.null(x.max)){
+    x.max <- max(fe[features.set_x, ids.keep.idents])
+  }
+  #print(c(1:length(features.set_x)))
+  p.list <- lapply(c(1:length(features.set_x)),FUN = function(x) {
+
+    
+    features.i <- paste(features.set_x[x], features.set_y[x], sep = "_")
+    #print(fe[features.set_x[x], ids.keep.idents])
+    p.features.i <- supercell_FeatureFeatureCorr_single(fe_x = fe[features.set_x[x], ids.keep.idents],
+                                                                fe_y = fe[features.set_y[x], ids.keep.idents],
+                                                                method = method,
+                                                                feature_x_name = features.set_x[x],
+                                                                feature_y_name = features.set_y[x],
+                                                                supercell_size = supercell_size[ids.keep.idents],
+                                                                clusters = clusters[ids.keep.idents],
+                                                                color.use = color.use,
+                                                                x.max = x.max,
+                                                                y.max = y.max,
+                                                                x.min =NULL,
+                                                                y.min =NULL,
+                                                                pt.size = pt.size,
+                                                                alpha = alpha)
+    #print(p.features.i)
+    return(p.features.i)
+  })
+  
+  names(p.list) <- lapply(c(1:length(features.set_x)),FUN = function(x) {
+return(paste(features.set_x[x], features.set_y[x], sep = "_"))
+  })
+  
+  if(sort.by.corr){ # sort plots by absolute value of correkation
+    p.list <- p.list[names(sort(abs(unlist(lapply(p.list, FUN = function(x){x$w.cor}))), decreasing = T, na.last = T))]
+  }
+  
+  #print(p.list)
+  
+  w.cor.list <- lapply(p.list, FUN = function(x){x$w.cor})
+  w.pval.list <- lapply(p.list, FUN = function(x){x$w.pval})
+
+  return(list(w.cor = w.cor.list, w.pval = w.pval.list))
+}
+
+supercell_FeatureFeatureCorr_Seurat <- function(seurat.mc,
+                                                feature_x,
+                                                feature_y,
+                                                method = c("pearson", "kendall", "spearman"),
+                                                assays =  c("ACTIVITY", "RNA"),
+                                                cluster = "celltype.l2",
+                                                is.normalized = F,
+                                                plot = T,
+                                                color.use = NULL,
+                                                use.size = T) {
+  method <- match.arg(arg = method)
+  Seurat::DefaultAssay(seurat.mc) <- assays[1]
+  if(assays[1] == "RNA") {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, 
+                                 normalization.method = "LogNormalize", 
+                                 margin = 1)
+    }
+  } else {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, 
+                                 normalization.method = "CLR", 
+                                 margin = 2)
+    }
+  }
+  
+  fe1 <- Seurat::GetAssayData(seurat.mc,slot = "data",assay = assays[1])[feature_x,]
+  
+  feature_x <- paste0(tolower(assays[1]),"_",feature_x)
+  
+  rownames(fe1) <- feature_x
+  
+  Seurat::DefaultAssay(seurat.mc) <- assays[2]
+  if(assays[2] == "ADT") {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, 
+                                 normalization.method = "LogNormalize", 
+                                 margin = 1)
+    }
+  } else {
+    if (!is.normalized) {
+      seurat.mc <- Seurat::NormalizeData(seurat.mc, 
+                                 normalization.method = "CLR", 
+                                 margin = 2)
+    }
+  }
+  
+  fe2 <- Seurat::GetAssayData(seurat.mc,slot = "data",assay = assays[2])[feature_y,]
+  
+  #feature_y <- paste0(tolower(assays[2]),"_",feature_y)
+  
+  rownames(fe2) <- feature_y
+  
+  fe <- rbind(fe1,fe2)
+  
+  if(use.size) {
+    sizes <- as.numeric(seurat.mc$size)
+  }   else {
+    sizes <-rep(1,length(ncol(seurat.mc)))
+  }
+  
+  #print(fe)
+  
+  res <- supercell_FeatureFeatureCorr(fe,
+                                      feature_x = feature_x,
+                                      feature_y = feature_y,
+                                      method = method,
+                                      supercell_size = sizes,
+                                      cluster = seurat.mc[[cluster]][,1],
+                                      color.use = color.use,
+                                      combine = F)
+  
+  
+  #w.cor <- as.numeric(res$w.co)
+  w.cor <- data.frame(features = names(res$w.cor),w.cor = as.numeric(res$w.cor))
+  
+  return(w.cor)
+  
+}
+```
+
+
+
+
+```{r}
+set.seed(2022)
+gc()
+
+DefaultAssay(pbmc) <- "RNA"
+pbmc <- NormalizeData(pbmc)
+pbmc <- FindVariableFeatures(pbmc)
+feature_x <- HVFInfo(pbmc[["RNA"]],selection.method = "vst")
+feature_x <- rownames(feature_x[order(feature_x$variance.standardized,decreasing = T),])[c(1:4000)]
+feature_x <- feature_x[feature_x %in% rownames(pbmc[["ACTIVITY"]])][c(1:2000)]
+feature_y <- feature_x
+
+crData <- data.frame()
+for (gamma in c(1, 10,20,50,100,200)) {
+  if (gamma == 1) {
+    seurat.mc.multi <- pbmc
+    seurat.mc.multi$size <- 1
+  } else {
+  seurat.mc.multi <- readRDS(paste0("~/work/SuperCellMultiomicsAnalyses/output/correlationAnalyzis/pbmcMultiome/metacells/g",gamma,"/seurat.multiome.mc.activity.rds"))
+  }
+  
+  DefaultAssay(seurat.mc.multi) <- "RNA"
+  seurat.mc.multi <- NormalizeData(seurat.mc.multi)
+  
+  DefaultAssay(seurat.mc.multi) <- "ACTIVITY"
+  seurat.mc.multi <- NormalizeData(seurat.mc.multi)
+  
+  seurat.mc.multi.w.cor <- supercell_FeatureFeatureCorr_Seurat(seurat.mc = seurat.mc.multi,
+                                                               is.normalized = T,
+                                                               cluster = "seurat_annotations",
+                                                               color.use = color,
+                                                               feature_x = feature_x,
+                                                               feature_y = feature_y,plot = F)
+  
+  seurat.sub.cells <- sample(colnames(pbmc),size = ncol(seurat.mc.multi),replace = F)
+  seurat.sub <- subset(pbmc,cells = seurat.sub.cells)
+  seurat.sub$size = 1
+  seurat.sub.w.cor <- supercell_FeatureFeatureCorr_Seurat(seurat.mc = seurat.sub,
+                                                               is.normalized = T,
+                                                               cluster = "seurat_annotations",
+                                                               color.use = color,
+                                                               feature_x = feature_x,
+                                                               feature_y = feature_y,plot = F)
+  
+  seurat.mc.multi.w.cor$input <- "multiome"
+  seurat.mc.multi.w.cor$gamma <- gamma
+  seurat.sub.w.cor$input <- "subsampling"
+  seurat.sub.w.cor$gamma <- gamma
+  
+  crData <- rbind(crData,seurat.mc.multi.w.cor,seurat.sub.w.cor)
+  
+  # crData <- rbind(crData, data.frame(w.cor = c(seurat.mc.multi.w.cor$w.cor,seurat.mc.random.cor$w.cor),
+  #                                    input = c(rep("multi",length(seurat.mc.multi.w.cor)),
+  #                                              rep("random",length(seurat.mc.random.cor))),
+  #                                    gamma = c(rep(gamma,length(seurat.mc.multi.w.cor)),
+  #                                              rep(gamma,length(seurat.mc.random.cor)))))
+  
+}
+
+crData$gamma <- factor(as.character(crData$gamma),levels = c(1,c(1:10)*10))
+
+
+globalCr <- ggplot(crData,aes(y=w.cor,x = gamma,fill = input)) +geom_boxplot()
+```
+
+
+```{r}
+globalCr
+```
+
+```{r}
+saveRDS(globalCr,"globalCrPLotMultiome.rds")
+```
+
+
