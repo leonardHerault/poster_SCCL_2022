@@ -24,9 +24,9 @@ affiliation:
 
 main_findings:
   - "Reconciling **single-cell multiomics** modalities using **metacells**"
-logoleft_name: https&#58;//raw.githubusercontent.com/brentthorne/posterdown/master/images/betterhexlogo.png
-logoright_name: https&#58;//raw.githubusercontent.com/brentthorne/posterdown/master/images/betterhexlogo.png
-logocenter_name: https&#58;//raw.githubusercontent.com/brentthorne/posterdown/master/images/qr-code-black.png
+logoleft_name: "images/Poster/logoLeftFF.jpg"
+logoright_name: "images/Poster/logoRightFF.jpg"
+logocenter_name: "images/Poster/qr-code.svg"
 output: 
   posterdown::posterdown_betterport:
     self_contained: false
@@ -34,7 +34,21 @@ output:
     number_sections: false
 bibliography: biblio.bib
 link-citations: true
+poster_width: "33.1in"
+poster_height: "46.8in"
 ---
+
+<style>
+#main-img-left {
+ width: 13%;
+}
+#main-img-center {
+ width: 10%;
+}
+#main-img-right {
+ width: 13%;
+}
+</style>
 
 ```{r, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
@@ -51,7 +65,7 @@ library(ggplot2)
 
 
 # Introduction
-The increased throughput of single-cell omics technologies enables researchers to study cell type-specific gene regulation at an unprecedented resolution. These promises depend on the development of computational methods to cope with both large size and the high sparsity of these data. Thus, we and others developed methods to identify metacells, disjoint and homogeneous groups of cells, in scRNA-seq data [@baran_metacell_2019,@bilous_metacells_2022-1]. We are now developing a new version of our method **SuperCell** to identify metacells in single-cell multiomics (sc-multiomics) data that combine the measurement of different types of molecules (modalities) in the same single-cell.  
+The increased throughput of single-cell omics technologies allows researchers to study cell-type specific gene regulation at unprecedented resolution. This promise depends on the development of computational methods to cope with both the large size and the high sparsity of these data. Thus, we and others have developed approaches to identify metacells, disjoint and homogeneous groups of cells, in scRNA-seq data [@baran_metacell_2019;@bilous_metacells_2022-1]. We are now extending our `SuperCell` method to identify metacells in single-cell multiomics (sc-multiomics) data that combines the measurement of different types of molecules (modalities) in the same single cell.
 
 
 ```{r, include=FALSE}
@@ -69,7 +83,7 @@ library(ggplot2)
 
 # Methods
 
-For sc-multiomics, Supercell used a weighted Nearest Neighbor (wNN) graph  [@hao_integrated_2021]), on which the metacell are identified. Single-cell raw data from each modality are aggregated per metacells that can be used for downstream analyses.
+For sc-multiomics, our new `SuperCell` workflow identifies metacells on a weighted Nearest Neighbor (wNN) graph [@hao_integrated_2021]. Single-cell raw data from each modality are aggregated per metacells that can be used for downstream analyses.
 ```{r FigureMethod}
 knitr::include_graphics('images/FigureMethod.jpg')
 
@@ -78,8 +92,8 @@ knitr::include_graphics('images/FigureMethod.jpg')
 
 ## Datasets
 
-* 10X multiome data of Peripheral Blood Mononuclear cells (PBMCs) : scRNA-seq & ATAC-seq (12'000 cells). We analysed the correlation between gene expression and gene activity.
-* CITE-seq data of Bone marrow cells: scRNA-seq & 25 protein levels (30'000 cells). We analysed the correlation between gene expression and corresponding protein level.
+* *10X multiome* data of peripheral blood mononuclear cells (PBMCs): scRNA-seq & ATAC-seq (10'000 cells). We analyzed the correlation between gene expression and activity.
+* CITE-seq data from bone marrow (BM) cells: scRNA-seq & 25 protein levels (30'000 cells). We analyzed the correlation between gene expression and the corresponding protein level.
 
 ```{r FigureActivity, out.width="70%"}
 knitr::include_graphics('images/FigureActivity.jpg')
@@ -89,27 +103,28 @@ knitr::include_graphics('images/FigureActivity.jpg')
 
 # Results
 
-### 10X multiome dataset of pbmc
-SuperCell identified robuste metacell in multiomic space of PBMC cells (Fig.\@ref(fig:pbmcmulti)).
-```{r pbmcmulti, echo=FALSE, fig.cap='identified metacell in the multimomic space of PBMCs'}
+### 10X multiome dataset of PBMCs
+`SuperCell` identified robust metacells in the multiomic space of PBMCs. (Fig.\@ref(fig:pbmcmulti)).
+
+```{r pbmcmulti, echo=FALSE, fig.cap='identified metacells in the multimomic space of PBMCs.', fig.height=6, out.width="80%"}
 
 umapMultiSC <- readRDS("multiome_umapmc.rds")
 umapMultiSC 
 ```
 \
 
-Gene activity and expression for key TF of lymphoid cells (TCF7) and myeloid cells (SPI1) appeared more correlated at the metacell level (Fig.\@ref(fig:crMultiomeKey)).
+Gene activity and expression for key Transcription Factors TFs of lymphoid cells (TCF7) and myeloid cells (SPI1) appeared more correlated at the metacell level (Fig.\@ref(fig:crMultiomeKey)).
 
-```{r crMultiomeKey, echo=FALSE, fig.cap='gene expression-activity correlation for key TF of immune cells'}
+```{r crMultiomeKey, echo=FALSE, fig.cap='gene expression-activity correlation for key TFs of immune cells. Single-cell level, gamma 20 and gamma 50 from left to right.'}
 multiomeCr <- readRDS("crPLotMultiome.rds")
 
 cowplot::plot_grid(multiomeCr)
 ```
 \
 
-Analysis of this correlation for the most variable genes at the transcriptomic level (top 2000) show the same trend (Fig.\@ref(fig:globalCrMultiome)).
+Analysis of this correlation for the most variable genes at the transcriptomic level (top 2000) showed the same trend (Fig.\@ref(fig:globalCrMultiome)).
 
-```{r, globalCrMultiome, fig.cap='Global gene expression-activity correlation'}
+```{r, globalCrMultiome, fig.cap='Gene expression-activity correlation for 2000 genes at different gammas. The dataset was subsampled at each gamma for comparison.'}
 globalCr <- readRDS("globalCrPLotMultiome.rds")
 globalCr
 ```
@@ -118,28 +133,29 @@ globalCr
 \
 \
 \
+\
 
 ### CITE-seq dataset of BM cells
-SuperCell identified robuste metacell in CITE-seq space of BM cells (Fig.\@ref(fig:bmcite)).
+`SuperCell` identified robust metacell in the CITE-seq space of BM cells (Fig.\@ref(fig:bmcite)).
 
-```{r bmcite, echo=FALSE, fig.cap='identyfied metacell in the multimodal single cell CITE-seq space of bone marrow cells'}
+```{r bmcite, echo=FALSE, fig.cap='Identified metacell in the CITE-seq space of BM cells', fig.height=6, out.width="80%"}
 
 umapMultiSC <- readRDS("bmcite_umapmc.rds")
 umapMultiSC + guides(fill=guide_legend(ncol=2))
 ```
 \
-Metacell analysis increase the correlation between RNA and protein level of key markers of HSC (CD34) and CD8 T cells (CD8A) Fig.\@ref(fig:crBmKey).
+Metacell analysis increased the correlation between RNA and protein levels of key markers of HSCs (CD34) and CD8 T cells (CD8A, Fig.\@ref(fig:crBmKey)).
 
-```{r crBmKey, echo=FALSE, fig.cap='RNA protein correlations for key markers of BM cells', out.width="90%"}
+```{r crBmKey, echo=FALSE, fig.cap='RNA protein correlations for key markers of BM cells. Single-cell level, gamma 20 and gamma 50 from left to right.'}
 crBmKey <- readRDS("crCiteSeq.rds")
 
 cowplot::plot_grid(crBmKey)
 ```
 
 \
-The analysis of the RNA-protein correlation for the all 25 gene-protein couples exhibits the same trend Fig.\@ref(fig:globalCrCiteSeq).
+RNA-protein correlation analysis for the 25 gene-protein pairs exhibited the same trend (Fig.\@ref(fig:globalCrCiteSeq)).
 
-```{r, globalCrCiteSeq, fig.cap='Global RNA-Protein correlations'}
+```{r, globalCrCiteSeq, fig.cap='RNA-Protein correlation for all gene-protein pairs. Random metacells were defined at each gamma for comparison.'}
 globalCr <- readRDS("globalCrCiteSeq.rds")
 globalCr
 ```
