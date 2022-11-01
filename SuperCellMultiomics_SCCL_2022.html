@@ -33,15 +33,15 @@ Here are the required style attributes for css to make this poster work :)
 -->
 <style>
 @page {
-size: 36in 48in;
+size: 33.1in 46.8in;
 margin: 0;
 padding: 0;
 }
 body {
 margin: 0px;
 padding: 0px;
-width: 36in;
-height: 48in;
+width: 33.1in;
+height: 46.8in;
 text-align: justify;
 font-size: 45px;
 line-height: 1.05;
@@ -124,8 +124,8 @@ float: left;
 padding: 0px;
 }
 .outer {
-width: 36in;
-height: calc(48in *  (1 - 0.12 - 9.5e-2 - 0.01) );
+width: 33.1in;
+height: calc(46.8in *  (1 - 0.12 - 9.5e-2 - 0.01) );
 -webkit-column-count: 3; /* Chrome, Safari, Opera */
 -moz-column-count: 3; /* Firefox */
 column-count: 3;
@@ -146,7 +146,7 @@ column-rule-style: none;
 column-rule-color: black;
 background-color: #ffffff;
 font-family: Rasa;
-margin-top: calc(48in *  0.12 );
+margin-top: calc(46.8in *  0.12 );
 padding-top: 1em;
 padding-bottom: 1em;
 }
@@ -238,8 +238,8 @@ padding-right: 8%;
 text-align: left;
 }
 .main {
-width: 36in;
-height: calc(48in * 0.12);
+width: 33.1in;
+height: calc(46.8in * 0.12);
 position: absolute;
 background-color: #0b4545;
 color: #ffffff90;
@@ -263,7 +263,7 @@ position: absolute;
 }
 #main-img-center {
 width: 10%;
-left: calc(36in * 0.45);
+left: calc(33.1in * 0.45);
 bottom: 0.5in;
 position: absolute;
 }
@@ -304,14 +304,14 @@ font-size: 5px;
 text-decoration: none;
 }
 .poster_wrap {
-width: 36in;
-height: 48in;
+width: 33.1in;
+height: 46.8in;
 padding: 0cm;
 }
 .main_bottom {
-width: 36in;
-height: calc(48in * 9.5e-2);
-margin-top: calc(48in * (1 - 9.5e-2));
+width: 33.1in;
+height: calc(46.8in * 9.5e-2);
+margin-top: calc(46.8in * (1 - 9.5e-2));
 position: absolute;
 background-color: #0b4545;
 background-image: linear-gradient(#008080 10%, #0b4545);
@@ -385,54 +385,66 @@ span > #tab:mytable {
 </p>
 </div>
 
+<style>
+#main-img-left {
+ width: 13%;
+}
+#main-img-center {
+ width: 10%;
+}
+#main-img-right {
+ width: 13%;
+}
+</style>
 <div id="introduction" class="section level1">
 <h1>Introduction</h1>
-<p>The increased throughput of single-cell omics technologies enables researchers to study cell type-specific gene regulation at an unprecedented resolution. These promises depend on the development of computational methods to cope with both large size and the high sparsity of these data. Thus, we and others developed methods to identify metacells, disjoint and homogeneous groups of cells, in scRNA-seq data <span class="citation">Bilous et al. (<a href="#ref-bilous_metacells_2022-1" role="doc-biblioref">2022</a>)</span>. We are now developing a new version of our method <strong>SuperCell</strong> to identify metacells in single-cell multiomics (sc-multiomics) data that combine the measurement of different types of molecules (modalities) in the same single-cell.</p>
+<p>The increased throughput of single-cell omics technologies allows researchers to study cell-type specific gene regulation at unprecedented resolution. This promise depends on the development of computational methods to cope with both the large size and the high sparsity of these data. Thus, we and others have developed approaches to identify metacells, disjoint and homogeneous groups of cells, in scRNA-seq data <span class="citation">(<a href="#ref-baran_metacell_2019" role="doc-biblioref">Baran et al. 2019</a>; <a href="#ref-bilous_metacells_2022-1" role="doc-biblioref">Bilous et al. 2022</a>)</span>. We are now extending our <code>SuperCell</code> method to identify metacells in single-cell multiomics (sc-multiomics) data that combines the measurement of different types of molecules (modalities) in the same single cell.</p>
 <p><img src="images/FigureIntro.png.jpg" width="80%" style="display: block; margin: auto;" /></p>
 </div>
 <div id="methods" class="section level1">
 <h1>Methods</h1>
-<p>For sc-multiomics, Supercell used a weighted Nearest Neighbor (wNN) graph <span class="citation">(<a href="#ref-hao_integrated_2021" role="doc-biblioref">Hao et al. 2021</a>)</span>), on which the metacell are identified. Single-cell raw data from each modality are aggregated per metacells that can be used for downstream analyses.
+<p>For sc-multiomics, our new <code>SuperCell</code> workflow identifies metacells on a weighted Nearest Neighbor (wNN) graph <span class="citation">(<a href="#ref-hao_integrated_2021" role="doc-biblioref">Hao et al. 2021</a>)</span>. Single-cell raw data from each modality are aggregated per metacells that can be used for downstream analyses.
 <img src="images/FigureMethod.jpg" width="100%" style="display: block; margin: auto;" /></p>
 <div id="datasets" class="section level2">
 <h2>Datasets</h2>
 <ul>
-<li>10X multiome data of Peripheral Blood Mononuclear cells (PBMCs) : scRNA-seq &amp; ATAC-seq (12’000 cells). We analysed the correlation between gene expression and gene activity.</li>
-<li>CITE-seq data of Bone marrow cells: scRNA-seq &amp; 25 protein levels (30’000 cells). We analysed the correlation between gene expression and corresponding protein level.</li>
+<li><em>10X multiome</em> data of peripheral blood mononuclear cells (PBMCs): scRNA-seq &amp; ATAC-seq (10’000 cells). We analyzed the correlation between gene expression and activity.</li>
+<li>CITE-seq data from bone marrow (BM) cells: scRNA-seq &amp; 25 protein levels (30’000 cells). We analyzed the correlation between gene expression and the corresponding protein level.</li>
 </ul>
 <p><img src="images/FigureActivity.jpg" width="70%" style="display: block; margin: auto;" /></p>
 </div>
 </div>
 <div id="results" class="section level1">
 <h1>Results</h1>
-<div id="x-multiome-dataset-of-pbmc" class="section level3">
-<h3>10X multiome dataset of pbmc</h3>
-SuperCell identified robuste metacell in multiomic space of PBMC cells (Fig.<a href="#fig:pbmcmulti">1</a>).
+<div id="x-multiome-dataset-of-pbmcs" class="section level3">
+<h3>10X multiome dataset of PBMCs</h3>
+<p><code>SuperCell</code> identified robust metacells in the multiomic space of PBMCs. (Fig.<a href="#fig:pbmcmulti">1</a>).</p>
 <div class="figure" style="text-align: center"><span style="display:block;" id="fig:pbmcmulti"></span>
-<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/pbmcmulti-1.png" alt="identified metacell in the multimomic space of PBMCs" width="100%" />
+<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/pbmcmulti-1.png" alt="identified metacells in the multimomic space of PBMCs." width="80%" />
 <p class="caption">
-Figure 1: identified metacell in the multimomic space of PBMCs
+Figure 1: identified metacells in the multimomic space of PBMCs.
 </p>
 </div>
 <p><br />
 </p>
-<p>Gene activity and expression for key TF of lymphoid cells (TCF7) and myeloid cells (SPI1) appeared more correlated at the metacell level (Fig.<a href="#fig:crMultiomeKey">2</a>).</p>
+<p>Gene activity and expression for key Transcription Factors TFs of lymphoid cells (TCF7) and myeloid cells (SPI1) appeared more correlated at the metacell level (Fig.<a href="#fig:crMultiomeKey">2</a>).</p>
 <div class="figure" style="text-align: center"><span style="display:block;" id="fig:crMultiomeKey"></span>
-<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/crMultiomeKey-1.png" alt="gene expression-activity correlation for key TF of immune cells" width="100%" />
+<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/crMultiomeKey-1.png" alt="gene expression-activity correlation for key TFs of immune cells. Single-cell level, gamma 20 and gamma 50 from left to right." width="100%" />
 <p class="caption">
-Figure 2: gene expression-activity correlation for key TF of immune cells
+Figure 2: gene expression-activity correlation for key TFs of immune cells. Single-cell level, gamma 20 and gamma 50 from left to right.
 </p>
 </div>
 <p><br />
 </p>
-<p>Analysis of this correlation for the most variable genes at the transcriptomic level (top 2000) show the same trend (Fig.<a href="#fig:globalCrMultiome">3</a>).</p>
+<p>Analysis of this correlation for the most variable genes at the transcriptomic level (top 2000) showed the same trend (Fig.<a href="#fig:globalCrMultiome">3</a>).</p>
 <div class="figure" style="text-align: center"><span style="display:block;" id="fig:globalCrMultiome"></span>
-<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/globalCrMultiome-1.png" alt="Global gene expression-activity correlation" width="100%" />
+<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/globalCrMultiome-1.png" alt="Gene expression-activity correlation for 2000 genes at different gammas. The dataset was subsampled at each gamma for comparison." width="100%" />
 <p class="caption">
-Figure 3: Global gene expression-activity correlation
+Figure 3: Gene expression-activity correlation for 2000 genes at different gammas. The dataset was subsampled at each gamma for comparison.
 </p>
 </div>
 <p><br />
+<br />
 <br />
 <br />
 <br />
@@ -440,27 +452,27 @@ Figure 3: Global gene expression-activity correlation
 </div>
 <div id="cite-seq-dataset-of-bm-cells" class="section level3">
 <h3>CITE-seq dataset of BM cells</h3>
-<p>SuperCell identified robuste metacell in CITE-seq space of BM cells (Fig.<a href="#fig:bmcite">4</a>).</p>
+<p><code>SuperCell</code> identified robust metacell in the CITE-seq space of BM cells (Fig.<a href="#fig:bmcite">4</a>).</p>
 <div class="figure" style="text-align: center"><span style="display:block;" id="fig:bmcite"></span>
-<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/bmcite-1.png" alt="identyfied metacell in the multimodal single cell CITE-seq space of bone marrow cells" width="100%" />
+<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/bmcite-1.png" alt="Identified metacell in the CITE-seq space of BM cells" width="80%" />
 <p class="caption">
-Figure 4: identyfied metacell in the multimodal single cell CITE-seq space of bone marrow cells
+Figure 4: Identified metacell in the CITE-seq space of BM cells
 </p>
 </div>
 <p><br />
-Metacell analysis increase the correlation between RNA and protein level of key markers of HSC (CD34) and CD8 T cells (CD8A) Fig.<a href="#fig:crBmKey">5</a>.</p>
+Metacell analysis increased the correlation between RNA and protein levels of key markers of HSCs (CD34) and CD8 T cells (CD8A, Fig.<a href="#fig:crBmKey">5</a>).</p>
 <div class="figure" style="text-align: center"><span style="display:block;" id="fig:crBmKey"></span>
-<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/crBmKey-1.png" alt="RNA protein correlations for key markers of BM cells" width="90%" />
+<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/crBmKey-1.png" alt="RNA protein correlations for key markers of BM cells. Single-cell level, gamma 20 and gamma 50 from left to right." width="100%" />
 <p class="caption">
-Figure 5: RNA protein correlations for key markers of BM cells
+Figure 5: RNA protein correlations for key markers of BM cells. Single-cell level, gamma 20 and gamma 50 from left to right.
 </p>
 </div>
 <p><br />
-The analysis of the RNA-protein correlation for the all 25 gene-protein couples exhibits the same trend Fig.<a href="#fig:globalCrCiteSeq">6</a>.</p>
+RNA-protein correlation analysis for the 25 gene-protein pairs exhibited the same trend (Fig.<a href="#fig:globalCrCiteSeq">6</a>).</p>
 <div class="figure" style="text-align: center"><span style="display:block;" id="fig:globalCrCiteSeq"></span>
-<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/globalCrCiteSeq-1.png" alt="Global RNA-Protein correlations" width="100%" />
+<img src="SuperCellMultiomics_SCCL_2022_files/figure-html/globalCrCiteSeq-1.png" alt="RNA-Protein correlation for all gene-protein pairs. Random metacells were defined at each gamma for comparison." width="100%" />
 <p class="caption">
-Figure 6: Global RNA-Protein correlations
+Figure 6: RNA-Protein correlation for all gene-protein pairs. Random metacells were defined at each gamma for comparison.
 </p>
 </div>
 </div>
@@ -485,9 +497,9 @@ Hao, Yuhan, Stephanie Hao, Erica Andersen-Nissen, William M. Mauck, Shiwei Zheng
 <p>Reconciling <strong>single-cell multiomics</strong> modalities using <strong>metacells</strong></p>
 </div>
 <div class="main_bottom">
-<img id="main-img-left" src=https://raw.githubusercontent.com/brentthorne/posterdown/master/images/betterhexlogo.png>
-<img id="main-img-center" src=https://raw.githubusercontent.com/brentthorne/posterdown/master/images/qr-code-black.png>
-<img id="main-img-right" src=https://raw.githubusercontent.com/brentthorne/posterdown/master/images/betterhexlogo.png>
+<img id="main-img-left" src=images/Poster/logoLeftFF.jpg>
+<img id="main-img-center" src=images/Poster/qr-code.svg>
+<img id="main-img-right" src=images/Poster/logoRightFF.jpg>
 </div>
 </div>
 
